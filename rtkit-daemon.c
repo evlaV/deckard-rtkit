@@ -164,10 +164,16 @@ static bool log_debug = FALSE;
 /* Scheduling policy to use */
 static int sched_policy = SCHED_RR;
 
+/* Current suspend state */
+static bool suspended = FALSE;
+
 struct thread {
         /* We use the thread id plus its starttime as a unique identifier for threads */
         pid_t pid;
         unsigned long long starttime;
+
+        unsigned priority;
+        int nice_level;
 
         struct thread *next;
 };
@@ -419,6 +425,8 @@ static int find_thread(struct thread** _t, struct rtkit_user *u, struct process 
         t->pid = pid;
         t->starttime = starttime;
         t->next = p->threads;
+        t->priority = (unsigned) -1;
+        t->nice_level = 0;
         p->threads = t;
         u->n_threads++;
         n_total_threads++;
@@ -427,7 +435,7 @@ static int find_thread(struct thread** _t, struct rtkit_user *u, struct process 
         return 0;
 }
 
-static bool thread_relevant(struct process *p, struct thread *t) {
+static bool thread_relevant(struct process *p, struct thread *t, bool reset) {
         unsigned long long st;
         int r;
 
@@ -448,6 +456,10 @@ static bool thread_relevant(struct process *p, struct thread *t) {
         /* Did the thread get replaced by another thread? */
         if (st != t->starttime)
                 return FALSE;
+
+        /* If suspended, don't verify scheduling unless it's a reset. */
+        if (suspended && !reset)
+                return TRUE;
 
         if ((r = sched_getscheduler(t->pid)) < 0) {
 
@@ -483,7 +495,7 @@ static bool thread_relevant(struct process *p, struct thread *t) {
         return FALSE;
 }
 
-static void thread_gc(struct rtkit_user *u, struct process *p) {
+static void thread_gc(struct rtkit_user *u, struct process *p, bool reset) {
         struct thread *t, *n, *l;
 
         /* Cleanup dead theads of a specific user we don't need to keep track about anymore */
@@ -491,7 +503,7 @@ static void thread_gc(struct rtkit_user *u, struct process *p) {
         for (l = NULL, t = p->threads; t; t = n) {
                 n = t->next;
 
-                if (!thread_relevant(p, t)) {
+                if (!thread_relevant(p, t, reset)) {
                         free_thread(t);
                         if (l)
                                 l->next = n;
@@ -510,14 +522,14 @@ static void thread_gc(struct rtkit_user *u, struct process *p) {
         assert(!p->threads || u->n_threads);
 }
 
-static void process_gc(struct rtkit_user *u) {
+static void process_gc(struct rtkit_user *u, bool reset) {
         struct process *p, *n, *l;
 
         /* Cleanup dead processes of a specific user we don't need to keep track about anymore */
 
         for (l = NULL, p = u->processes; p; p = n) {
                 n = p->next;
-                thread_gc(u, p);
+                thread_gc(u, p, reset);
 
                 if (!p->threads) {
                         free_process(p);
@@ -538,14 +550,14 @@ static void process_gc(struct rtkit_user *u) {
         assert(!u->processes == !u->n_processes);
 }
 
-static void user_gc(void) {
+static void user_gc(bool reset) {
         struct rtkit_user *u, *n, *l;
 
         /* Cleanup all users we don't need to keep track about anymore */
 
         for (l = NULL, u = users; u; u = n) {
                 n = u->next;
-                process_gc(u);
+                process_gc(u, reset);
 
                 if (!u->processes && !user_in_burst(u)) {
                         free_user(u);
@@ -736,10 +748,6 @@ static int process_set_realtime(struct rtkit_user *u, struct process *p, struct 
             priority > max_realtime_priority)
                 return -EPERM;
 
-        /* Make sure users don't flood us with requests */
-        if (!verify_burst(u))
-                return -EBUSY;
-
         /* Temporarily become a realtime process. We do this to make
          * sure that our verification code is not preempted by an evil
          * client's code which might have gotten RT through
@@ -790,6 +798,22 @@ finish:
         return r;
 }
 
+static int process_set_realtime_request(struct rtkit_user *u, struct process *p, struct thread *t, int priority) {
+        int r;
+
+        /* Make sure users don't flood us with requests */
+        if (!verify_burst(u))
+                return -EBUSY;
+
+        if (suspended)
+                return -EBUSY;
+
+        if (!(r = process_set_realtime(u, p, t, priority)))
+                t->priority = priority;
+
+        return r;
+}
+
 static int process_set_high_priority(struct rtkit_user *u, struct process *p, struct thread *t, int nice_level) {
         int r;
         struct sched_param param;
@@ -800,10 +824,6 @@ static int process_set_high_priority(struct rtkit_user *u, struct process *p, st
 
         if (nice_level < min_nice_level)
                 return -EPERM;
-
-        /* Make sure users don't flood us with requests */
-        if (!verify_burst(u))
-                return -EBUSY;
 
         /* Temporarily become a realtime process */
         if ((r = self_set_realtime(our_realtime_priority)) < 0)
@@ -851,6 +871,29 @@ finish:
         self_drop_realtime(our_nice_level);
 
         return r;
+}
+
+static int process_set_high_priority_request(struct rtkit_user *u, struct process *p, struct thread *t, int nice_level) {
+        int r;
+
+        /* Make sure users don't flood us with requests */
+        if (!verify_burst(u))
+                return -EBUSY;
+
+        if (suspended)
+                return -EBUSY;
+
+        if (!(r = process_set_high_priority(u, p, t, nice_level)))
+                t->nice_level = nice_level;
+
+        return r;
+}
+
+static int thread_resume(struct rtkit_user *u, struct process *p, struct thread *t) {
+        if (t->priority != (unsigned) -1)
+                return process_set_realtime(u, p, t, t->priority);
+        else
+                return process_set_high_priority(u, p, t, t->nice_level);
 }
 
 static void reset_known(void) {
@@ -980,11 +1023,45 @@ static int reset_all(void) {
 }
 
 static void suspend(void) {
-        // TODO
+        if (suspended)
+                return ;
+
+        suspended = TRUE;
+        stop_canary();
+        reset_known();
 }
 
 static void resume(void) {
-        // TODO
+        struct rtkit_user *u;
+        struct process *p;
+        struct thread *t;
+        unsigned n_resumed = 0;
+
+        if (!suspended)
+                return;
+
+        syslog(LOG_INFO, "Resuming known real-time threads.\n");
+
+        /* It is not possible for there to be more resumable processes and
+         * threads than user limits, as suspended processes and threads can
+         * only be created when non-suspended, subject to normal enforcement.
+         */
+
+        for (u = users; u; u = u->next) {
+                /* Force restart burst phase, extending time window. */
+                time(&u->timestamp);
+                for (p = u->processes; p; p = p->next) {
+                        for (t = p->threads; t; t = t->next) {
+                                if (thread_resume(u, p, t) >= 0) {
+                                        n_resumed++;
+                                }
+                        }
+                }
+        }
+        syslog(LOG_NOTICE, "Resumed scheduling %u threads.\n", n_resumed);
+
+        start_canary();
+        suspended = FALSE;
 }
 
 /* This mimics dbus_bus_get_unix_user() */
@@ -1346,7 +1423,7 @@ static DBusHandlerResult dbus_handler(DBusConnection *c, DBusMessage *m, void *u
         dbus_error_init(&error);
 
         /* We garbage collect on every user call */
-        user_gc();
+        user_gc(FALSE);
 
         if (dbus_message_is_method_call(m, "org.freedesktop.RealtimeKit1", "MakeThreadRealtime") ||
             (is2 = dbus_message_is_method_call(m, "org.freedesktop.RealtimeKit1", "MakeThreadRealtimeWithPID"))) {
@@ -1392,7 +1469,7 @@ static DBusHandlerResult dbus_handler(DBusConnection *c, DBusMessage *m, void *u
                         goto finish;
                 }
 
-                if ((ret = process_set_realtime(u, p, t, priority))) {
+                if ((ret = process_set_realtime_request(u, p, t, priority))) {
                         assert_se(r = dbus_message_new_error_printf(m, translate_error_forward(ret), "%s", strerror(-ret)));
                         goto finish;
                 }
@@ -1444,7 +1521,7 @@ static DBusHandlerResult dbus_handler(DBusConnection *c, DBusMessage *m, void *u
                         goto finish;
                 }
 
-                if ((ret = process_set_high_priority(u, p, t, nice_level))) {
+                if ((ret = process_set_high_priority_request(u, p, t, nice_level))) {
                         assert_se(r = dbus_message_new_error_printf(m, translate_error_forward(ret), "%s", strerror(-ret)));
                         goto finish;
                 }
@@ -1454,13 +1531,13 @@ static DBusHandlerResult dbus_handler(DBusConnection *c, DBusMessage *m, void *u
         } else if (dbus_message_is_method_call(m, "org.freedesktop.RealtimeKit1", "ResetAll")) {
 
                 reset_all();
-                user_gc();
+                user_gc(TRUE);
                 assert_se(r = dbus_message_new_method_return(m));
 
         } else if (dbus_message_is_method_call(m, "org.freedesktop.RealtimeKit1", "ResetKnown")) {
 
                 reset_known();
-                user_gc();
+                user_gc(TRUE);
                 assert_se(r = dbus_message_new_method_return(m));
 
         } else if (dbus_message_is_method_call(m, "org.freedesktop.RealtimeKit1", "Suspend")) {
