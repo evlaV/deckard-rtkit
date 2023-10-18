@@ -1589,6 +1589,7 @@ static DBusHandlerResult dbus_handler(DBusConnection *c, DBusMessage *m, void *u
                                 DBUS_ERROR_UNKNOWN_PROPERTY,
                                 "Unknown interface %s",
                                 interface));
+                goto finish;
 
         } else if (dbus_message_is_method_call(m, "org.freedesktop.DBus.Properties", "GetAll")) {
                 const char *interface;
@@ -1621,6 +1622,7 @@ static DBusHandlerResult dbus_handler(DBusConnection *c, DBusMessage *m, void *u
                                           r,
                                           DBUS_TYPE_STRING, &xml,
                                           DBUS_TYPE_INVALID));
+                goto finish;
         } else
                 return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 
