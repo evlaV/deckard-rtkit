@@ -39,6 +39,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/syscall.h>
+#include <sys/resource.h>
 
 static pid_t _gettid(void) {
         return (pid_t) syscall(SYS_gettid);
@@ -283,6 +284,53 @@ finish:
         return ret;
 }
 
+int rtkit_make_realtime_simple(void)
+{
+        DBusConnection *dc;
+        long long rtt;
+        int ret;
+        struct rlimit old_rlim;
+        struct rlimit rlim;
+        int prio;
+
+        dc = dbus_bus_get(DBUS_BUS_SYSTEM, NULL);
+        if (dc == NULL)
+                return -ENETUNREACH;
+
+        rtt = rtkit_get_rttime_usec_max(dc);
+        if (rtt < 0) {
+                ret = rtt;
+                goto finish;
+        }
+
+        ret = getrlimit(RLIMIT_RTTIME, &old_rlim);
+        if (ret < 0) {
+                ret = -errno;
+                goto finish;
+        }
+        rlim.rlim_cur = rtt;
+        rlim.rlim_max = rtt;
+        ret = setrlimit(RLIMIT_RTTIME, &rlim);
+        if (ret < 0) {
+                ret = -errno;
+                goto finish;
+        }
+
+        prio = rtkit_get_max_realtime_priority(dc);
+        if (prio < 0) {
+                ret = prio;
+                setrlimit(RLIMIT_RTTIME, &old_rlim);
+                goto finish;
+        }
+
+        ret = rtkit_make_realtime(dc, 0, prio);
+        if (ret < 0)
+                setrlimit(RLIMIT_RTTIME, &old_rlim);
+finish:
+        dbus_connection_unref(dc);
+        return ret;
+}
+
 #else
 
 int rtkit_make_realtime(DBusConnection *connection, pid_t thread, int priority) {
@@ -302,6 +350,11 @@ int rtkit_get_min_nice_level(DBusConnection *connection, int* min_nice_level) {
 }
 
 long long rtkit_get_rttime_usec_max(DBusConnection *connection) {
+        return -ENOTSUP;
+}
+
+int rtkit_make_realtime_simple()
+{
         return -ENOTSUP;
 }
 

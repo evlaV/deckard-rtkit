@@ -71,6 +71,12 @@ int rtkit_get_min_nice_level(DBusConnection *system_bus, int* min_nice_level);
  */
 long long rtkit_get_rttime_usec_max(DBusConnection *system_bus);
 
+/* Make the current thread realtime in one function call.
+ * Returns 0 on success and -errno on failure.
+ * A failure to connect to dbus counts as -ENETUNREACH.
+ */
+int rtkit_make_realtime_simple(void);
+
 
 #ifdef __cplusplus
 }
