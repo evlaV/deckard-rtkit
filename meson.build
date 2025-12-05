@@ -76,6 +76,16 @@ if systemunitdir == ''
         systemunitdir = get_option('libdir') / 'systemd' / 'system'
 endif
 
+sysusersdir = ''
+if sysusersdir == '' and systemd_dep.found()
+        sysusersdir = systemd_dep.get_pkgconfig_variable(
+                'sysusersdir',
+                default: '',
+        )
+endif
+if sysusersdir == ''
+        sysusersdir = get_option('libdir') / 'sysusers.d'
+endif
 config = configuration_data()
 config.set('LIBEXECDIR', get_option('prefix') / libexecdir)
 config.set_quoted('PACKAGE_VERSION', meson.project_version())
@@ -143,4 +153,10 @@ configure_file(
         output: 'rtkit-daemon.service',
         configuration: config,
         install_dir: systemunitdir,
+)
+
+install_data(
+        'rtkit.sysusers',
+        rename: 'rtkit.conf',
+        install_dir: sysusersdir,
 )
