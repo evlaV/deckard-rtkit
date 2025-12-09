@@ -1,0 +1,55 @@
+include:
+- project: 'freedesktop/ci-templates'
+  ref: master
+  file: '/templates/fedora.yml'
+
+
+# Let's define some stages to get the correct order of jobs.
+stages:
+  - container
+  - build
+
+variables:
+  # The upstream repository path on gitlab.freedesktop.org to check
+  # for existing container images.
+  FDO_UPSTREAM_REPO: pipewire/rtkit
+
+# A simple template so we only have one place where we need to
+# define the Fedora version and the image tag
+# Using a date as tag is best practice but it can be any string
+# allowed by the GitLab registry.
+.rtkit.fedora:43:
+  variables:
+    FDO_DISTRIBUTION_VERSION: 43
+    FDO_DISTRIBUTION_TAG: '2025-12-09.0'
+
+
+# A job to build a Fedora 43 container with required deps
+build-fedora-container:
+  extends:
+  - .fdo.container-build@fedora     # the CI template
+  - .rtkit.fedora:43                # our template job above
+  stage: container
+  variables:
+    # Packages to install on the container
+    FDO_DISTRIBUTION_PACKAGES: >-
+      dbus-devel
+      gcc
+      git
+      libcap-devel
+      meson
+      polkit-devel
+      systemd-devel
+      xxd
+
+
+# The build job for your project. Extending from the CI Templates
+# .fdo.distribution-image makes it use the same image we built above.
+build:
+  extends:
+  - .fdo.distribution-image@fedora
+  - .rtkit.fedora:43
+  stage: build
+  script:
+    - meson setup build
+    - ninja -C build
