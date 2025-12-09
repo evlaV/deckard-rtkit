@@ -78,9 +78,9 @@ endif
 
 sysusersdir = ''
 if sysusersdir == '' and systemd_dep.found()
-        sysusersdir = systemd_dep.get_pkgconfig_variable(
+        sysusersdir = systemd_dep.get_variable(
                 'sysusersdir',
-                default: '',
+                default_value: '',
         )
 endif
 if sysusersdir == ''
