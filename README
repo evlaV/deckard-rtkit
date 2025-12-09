@@ -91,7 +91,7 @@ CLIENTS:
 
         where process is the PID of the process that has thread thread_id.
 
-        A BSD-licensed reference implementation of the client is
+        A MIT-licensed reference implementation of the client is
         available in rtkit.[ch] as part of the package. You may copy
         this into your sources if you wish. However given how simple
         the D-Bus interface is you might choose to implement your own
@@ -215,7 +215,7 @@ ACKNOWLEDGMENTS:
 
 LICENSE:
         GPLv3+ for the daemon
-        BSD for the client reference implementation
+        MIT for the client reference implementation
 
 AUTHOR:
         Lennart Poettering
