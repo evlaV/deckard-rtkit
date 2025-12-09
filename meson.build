@@ -2,7 +2,7 @@ project(
         'rtkit', 'c',
         version: '0.13',
         license: 'GPL3',
-        meson_version: '>=0.49.0',
+        meson_version: '>=0.58.0',
         default_options: ['c_std=c99', 'warning_level=2'],
 )
 
@@ -38,17 +38,17 @@ testsdir = get_option('libexecdir') / 'installed-tests' / meson.project_name()
 
 busservicedir = get_option('dbus_systemservicedir')
 if busservicedir == ''
-        busservicedir = dbus_dep.get_pkgconfig_variable(
+        busservicedir = dbus_dep.get_variable(
                 'system_bus_services_dir',
-                default: get_option('datadir') / 'dbus-1' / 'system-services',
+                default_value: get_option('datadir') / 'dbus-1' / 'system-services',
         )
 endif
 
 interfacedir = get_option('dbus_interfacedir')
 if interfacedir == ''
-        interfacedir = dbus_dep.get_pkgconfig_variable(
+        interfacedir = dbus_dep.get_variable(
                 'interfaces_dir',
-                default: get_option('datadir') / 'dbus-1' / 'interfaces',
+                default_value: get_option('datadir') / 'dbus-1' / 'interfaces',
         )
 endif
 
@@ -59,7 +59,7 @@ endif
 
 policydir = get_option('polkit_actiondir')
 if policydir == '' and polkit_dep.found()
-        policydir = polkit_dep.get_pkgconfig_variable('actiondir', default: '')
+        policydir = polkit_dep.get_variable('actiondir', default_value: '')
 endif
 if policydir == ''
         policydir = get_option('datadir') / 'polkit-1' / 'actions'
@@ -67,9 +67,9 @@ endif
 
 systemunitdir = get_option('systemd_systemunitdir')
 if systemunitdir == '' and systemd_dep.found()
-        systemunitdir = systemd_dep.get_pkgconfig_variable(
+        systemunitdir = systemd_dep.get_variable(
                 'systemdsystemunitdir',
-                default: '',
+                default_value: '',
         )
 endif
 if systemunitdir == ''
