@@ -1,6 +1,6 @@
 project(
         'rtkit', 'c',
-        version: '0.13',
+        version: '0.14',
         license: 'GPL3',
         meson_version: '>=0.58.0',
         default_options: ['c_std=c99', 'warning_level=2'],
