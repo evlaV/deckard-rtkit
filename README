@@ -1,7 +1,7 @@
 REALTIMEKIT Realtime Policy and Watchdog Daemon
 
 GIT:
-        https://github.com/heftig/rtkit
+        https://gitlab.freedesktop.org/pipewire/rtkit/
 
 NOTES:
         RealtimeKit is a D-Bus system service that changes the
