@@ -57,6 +57,10 @@
 
 #include "rtkit.h"
 
+
+// Include definitions for TRACE_BEGIN_CTX();
+#include <linux/trace_gpuvis.h>
+
 #ifndef __linux__
 #error "This stuff only works on Linux!"
 #endif
@@ -803,6 +807,7 @@ finish:
 
 static int process_set_realtime_request(struct rtkit_user *u, struct process *p, struct thread *t, int priority) {
         int r;
+        TRACE_BEGIN_CTX();
 
         /* Make sure users don't flood us with requests */
         if (!verify_burst(u))
@@ -878,6 +883,7 @@ finish:
 
 static int process_set_high_priority_request(struct rtkit_user *u, struct process *p, struct thread *t, int nice_level) {
         int r;
+        TRACE_BEGIN_CTX();
 
         /* Make sure users don't flood us with requests */
         if (!verify_burst(u))
@@ -1181,6 +1187,8 @@ static int lookup_client(
         struct process *p;
         struct thread *t;
 
+        TRACE_BEGIN_CTX();
+
         dbus_error_init(&error);
 
         /* Determine caller credentials */
@@ -1273,6 +1281,8 @@ static int verify_polkit(DBusConnection *c, struct rtkit_user *u, struct process
         uint64_t start_time_u64 = p->starttime;
         int ret;
         dbus_bool_t authorized = FALSE;
+
+        TRACE_BEGIN_CTX();
 
         dbus_error_init(&error);
 
@@ -1474,6 +1484,7 @@ static DBusHandlerResult dbus_handler(DBusConnection *c, DBusMessage *m, void *u
         DBusError error;
         DBusMessage *r = NULL;
         int is2 = 0;
+        TRACE_BEGIN_CTX();
 
         dbus_error_init(&error);
 
@@ -1505,6 +1516,8 @@ static DBusHandlerResult dbus_handler(DBusConnection *c, DBusMessage *m, void *u
                                                     DBUS_TYPE_UINT64, &thread,
                                                     DBUS_TYPE_UINT32, &priority,
                                                     DBUS_TYPE_INVALID);
+
+                TRACE_BEGIN_CTX_NAMED(MakeThreadRealtime, "thread=%" PRIu64 " priority=%" PRIu32, thread, priority);
 
                 if (!ret) {
                         syslog(LOG_DEBUG, "Failed to parse MakeThreadRealtime() method call: %s\n", error.message);
@@ -1557,6 +1570,8 @@ static DBusHandlerResult dbus_handler(DBusConnection *c, DBusMessage *m, void *u
                                                     DBUS_TYPE_UINT64, &thread,
                                                     DBUS_TYPE_INT32, &nice_level,
                                                     DBUS_TYPE_INVALID);
+
+                TRACE_BEGIN_CTX_NAMED(MakeThreadHighPriority, "thread=%" PRIu64 " nice_level=%" PRIu32, thread, nice_level);
 
                 if (!ret) {
                         syslog(LOG_DEBUG, "Failed to parse MakeThreadHighPriority() method call: %s\n", error.message);
