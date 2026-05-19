@@ -135,6 +135,9 @@ static bool do_drop_privileges = TRUE;
 /* Change root directory to /proc */
 static bool do_chroot = TRUE;
 
+/* Check polkit policy */
+static bool polkit = TRUE;
+
 /* Limit resources */
 static bool do_limit_resources = TRUE;
 
@@ -1282,6 +1285,9 @@ static int verify_polkit(DBusConnection *c, struct rtkit_user *u, struct process
         int ret;
         dbus_bool_t authorized = FALSE;
 
+        if (!polkit)
+                return 0;
+
         TRACE_BEGIN_CTX();
 
         dbus_error_init(&error);
@@ -2185,6 +2191,7 @@ enum {
         ARG_ACTIONS_PER_BURST_MAX,
         ARG_NO_DROP_PRIVILEGES,
         ARG_NO_CHROOT,
+        ARG_NO_POLKIT,
         ARG_NO_LIMIT_RESOURCES,
         ARG_NO_CANARY,
         ARG_CANARY_CHEEP_MSEC,
@@ -2217,6 +2224,7 @@ static const struct option long_options[] = {
     { "no-chroot",                   no_argument,       0, ARG_NO_CHROOT },
     { "no-limit-resources",          no_argument,       0, ARG_NO_LIMIT_RESOURCES },
     { "no-canary",                   no_argument,       0, ARG_NO_CANARY },
+    { "no-polkit",                   no_argument,       0, ARG_NO_POLKIT },
     { "canary-cheep-msec",           required_argument, 0, ARG_CANARY_CHEEP_MSEC },
     { "canary-watchdog-msec",        required_argument, 0, ARG_CANARY_WATCHDOG_MSEC },
     { "canary-demote-root",          no_argument,       0, ARG_CANARY_DEMOTE_ROOT },
@@ -2478,6 +2486,10 @@ static int parse_command_line(int argc, char *argv[], int *ret) {
 
                         case ARG_NO_CHROOT:
                                 do_chroot = FALSE;
+                                break;
+
+                        case ARG_NO_POLKIT:
+                                polkit = FALSE;
                                 break;
 
                         case ARG_NO_LIMIT_RESOURCES:
